@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "blockmaps",
+  "version": "${version}",
+  "name": "BlockMaps",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-datagen": [
+      "dfarium.blockmaps.client.BlockmapsDataGenerator"
+    ],
+    "client": [
+      "dfarium.blockmaps.client.BlockmapsClient"
+    ],
+    "main": [
+      "dfarium.blockmaps.Blockmaps"
+    ]
+  },
+  "mixins": [
+    "blockmaps.mixins.json",
+    {
+      "config": "blockmaps.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
