@@ -6,9 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.minecraft.block.Block;
-import net.minecraft.block.MapColor;
-import net.minecraft.block.SlabBlock;
+import net.minecraft.block.*;
 import net.minecraft.registry.Registries;
 import net.minecraft.resource.Resource;
 import net.minecraft.resource.ResourceManager;
@@ -110,8 +108,11 @@ public class Blockmaps implements ModInitializer {
         boolean isFullBlock = state.isFullCube(EmptyBlockView.INSTANCE, BlockPos.ORIGIN);
         boolean isSlab = block instanceof SlabBlock || id.getPath().contains("slab");
         boolean isGlass = state.getOutlineShape(EmptyBlockView.INSTANCE, BlockPos.ORIGIN) == VoxelShapes.fullCube();
+        boolean isCarpet = block instanceof CarpetBlock;
+        boolean isCandle = block instanceof AbstractCandleBlock;
+        boolean isPressurePlate = block instanceof PressurePlateBlock || block instanceof WeightedPressurePlateBlock;
         
-        return isFullBlock || isSlab || isGlass;
+        return isFullBlock || isSlab || isGlass || isCarpet || isCandle || isPressurePlate;
     }
 
     private static boolean processBlock(Block block, Map<MapColor, Set<Identifier>> blocksByColor, Path texturesDir, ResourceManager rm) {
@@ -132,7 +133,19 @@ public class Blockmaps implements ModInitializer {
             colorEntry.colorID = entry.getKey().id;
             colorEntry.colorName = MAP_COLOR_NAMES.getOrDefault(entry.getKey(), "unknown_" + entry.getKey().id);
             colorEntry.brightnessValues = BrightnessValues.from(entry.getKey());
-            colorEntry.blocks = entry.getValue().stream().map(Identifier::toString).sorted().toList();
+            
+            // Sort blocks by "nature" (grouping materials)
+            colorEntry.blocks = entry.getValue().stream()
+                .map(Identifier::toString)
+                .sorted((a, b) -> {
+                    String materialA = getMaterial(a);
+                    String materialB = getMaterial(b);
+                    int comp = materialA.compareTo(materialB);
+                    if (comp != 0) return comp;
+                    return a.compareTo(b); // Secondary alphabetical sort
+                })
+                .toList();
+            
             colors.add(colorEntry);
         }
         colors.sort(Comparator.comparingInt(c -> c.colorID));
@@ -142,6 +155,25 @@ public class Blockmaps implements ModInitializer {
         root.colors = colors;
         String fileName = String.format("palette_%s.json", gameVersion.replace(".", "_"));
         Files.writeString(outputDir.resolve(fileName), GSON.toJson(root));
+    }
+
+    private static String getMaterial(String blockId) {
+        String path = blockId.split(":")[1];
+        // Common materials/prefixes
+        String[] materials = {
+            "oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "bamboo", 
+            "crimson", "warped", "iron", "gold", "copper", "stone", "cobblestone", "andesite", "diorite", 
+            "granite", "sandstone", "quartz", "prismarine", "nether_brick", "blackstone", "deepslate", "mud", 
+            "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", 
+            "cyan", "purple", "blue", "brown", "green", "red", "black"
+        };
+        
+        for (String m : materials) {
+            if (path.startsWith(m + "_") || path.equals(m)) {
+                return m;
+            }
+        }
+        return "zzzzz_" + path; // Fallback to end of list
     }
 
     private static boolean extractTexture(Identifier blockId, Path texturesDir, ResourceManager resourceManager) {
