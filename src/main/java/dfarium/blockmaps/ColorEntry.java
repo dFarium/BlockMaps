@@ -6,5 +6,5 @@ public class ColorEntry {
     public int colorID;
     public String colorName;
     public BrightnessValues brightnessValues;
-    public List<String> blocks;
+    public List<BlockEntry> blocks;
 }
