@@ -63,7 +63,7 @@ public class Blockmaps implements ModInitializer {
             Files.createDirectories(texturesDir);
 
             ResourceManager resourceManager = getBestResourceManager(server);
-            export(outputDir, texturesDir, resourceManager);
+            export(outputDir, texturesDir, resourceManager, server.getVersion());
             
             LOGGER.info("Export completed in: {}", outputDir.toAbsolutePath());
         } catch (IOException e) {
@@ -84,7 +84,7 @@ public class Blockmaps implements ModInitializer {
         }
     }
 
-    public static void export(Path outputJson, Path texturesDir, ResourceManager resourceManager) throws IOException {
+    public static void export(Path outputJson, Path texturesDir, ResourceManager resourceManager, String gameVersion) throws IOException {
         Map<MapColor, Set<Identifier>> blocksByColor = new HashMap<>();
         int blocksProcessed = 0;
         int texturesExtracted = 0;
@@ -99,7 +99,7 @@ public class Blockmaps implements ModInitializer {
         }
         
         LOGGER.info("Processed {} blocks, successfully extracted {} textures", blocksProcessed, texturesExtracted);
-        saveJson(outputJson, blocksByColor);
+        saveJson(outputJson, blocksByColor, gameVersion);
     }
 
     private static boolean shouldExport(Block block) {
@@ -125,7 +125,7 @@ public class Blockmaps implements ModInitializer {
         return extractTexture(id, texturesDir, rm);
     }
 
-    private static void saveJson(Path outputDir, Map<MapColor, Set<Identifier>> blocksByColor) throws IOException {
+    private static void saveJson(Path outputDir, Map<MapColor, Set<Identifier>> blocksByColor, String gameVersion) throws IOException {
         List<ColorEntry> colors = new ArrayList<>();
         for (Map.Entry<MapColor, Set<Identifier>> entry : blocksByColor.entrySet()) {
             ColorEntry colorEntry = new ColorEntry();
@@ -138,8 +138,10 @@ public class Blockmaps implements ModInitializer {
         colors.sort(Comparator.comparingInt(c -> c.colorID));
         
         Root root = new Root();
+        root.version = gameVersion;
         root.colors = colors;
-        Files.writeString(outputDir.resolve("block_map_colors.json"), GSON.toJson(root));
+        String fileName = String.format("palette_%s.json", gameVersion.replace(".", "_"));
+        Files.writeString(outputDir.resolve(fileName), GSON.toJson(root));
     }
 
     private static boolean extractTexture(Identifier blockId, Path texturesDir, ResourceManager resourceManager) {
