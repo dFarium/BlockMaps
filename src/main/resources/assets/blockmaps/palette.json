@@ -152,7 +152,7 @@
         },
         {
           "id": "minecraft:sand",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.0.0"
         },
         {
@@ -177,7 +177,7 @@
         },
         {
           "id": "minecraft:suspicious_sand",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.20.0"
         }
       ]
@@ -515,7 +515,7 @@
         },
         {
           "id": "minecraft:white_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -869,7 +869,7 @@
         },
         {
           "id": "minecraft:gravel",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.0.0"
         },
         {
@@ -954,7 +954,7 @@
         },
         {
           "id": "minecraft:suspicious_gravel",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.20.0"
         },
         {
@@ -1321,7 +1321,7 @@
         },
         {
           "id": "minecraft:orange_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -1346,7 +1346,7 @@
         },
         {
           "id": "minecraft:red_sand",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.7.2"
         },
         {
@@ -1524,7 +1524,7 @@
         },
         {
           "id": "minecraft:magenta_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -1607,7 +1607,7 @@
         },
         {
           "id": "minecraft:light_blue_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -1705,7 +1705,7 @@
         },
         {
           "id": "minecraft:yellow_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -1838,7 +1838,7 @@
         },
         {
           "id": "minecraft:lime_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -1916,7 +1916,7 @@
         },
         {
           "id": "minecraft:pink_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -1999,7 +1999,7 @@
         },
         {
           "id": "minecraft:gray_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -2097,7 +2097,7 @@
         },
         {
           "id": "minecraft:light_gray_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -2185,7 +2185,7 @@
         },
         {
           "id": "minecraft:cyan_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -2263,7 +2263,7 @@
         },
         {
           "id": "minecraft:purple_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -2361,7 +2361,7 @@
         },
         {
           "id": "minecraft:blue_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -2434,7 +2434,7 @@
         },
         {
           "id": "minecraft:brown_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -2552,7 +2552,7 @@
         },
         {
           "id": "minecraft:green_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -2665,7 +2665,7 @@
         },
         {
           "id": "minecraft:red_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {
@@ -2808,7 +2808,7 @@
         },
         {
           "id": "minecraft:black_concrete_powder",
-          "needsSupport": false,
+          "needsSupport": true,
           "introducedIn": "1.12.0"
         },
         {

@@ -204,7 +204,9 @@ public class Blockmaps implements ModInitializer {
 
     private static boolean needsSupport(Block block, LevelReader world) {
         // Evaluate canPlaceAt at a high altitude overworld position (likely air)
-        return !block.defaultBlockState().canSurvive(world, new BlockPos(0, 320, 0));
+        return !block.defaultBlockState().canSurvive(world, new BlockPos(0, 320, 0)) 
+                || block instanceof FallingBlock 
+                || block instanceof BrushableBlock;
     }
 
     private static String getMaterial(String blockId) {
