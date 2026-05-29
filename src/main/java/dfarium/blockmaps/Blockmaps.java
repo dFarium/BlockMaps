@@ -6,16 +6,20 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.minecraft.block.*;
-import net.minecraft.registry.Registries;
-import net.minecraft.resource.Resource;
-import net.minecraft.resource.ResourceManager;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.shape.VoxelShapes;
-import net.minecraft.world.EmptyBlockView;
-import net.minecraft.world.WorldView;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.*;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,7 +66,7 @@ public class Blockmaps implements ModInitializer {
             Files.createDirectories(texturesDir);
 
             ResourceManager resourceManager = getBestResourceManager(server);
-            export(outputDir, texturesDir, resourceManager, server.getVersion(), server.getOverworld());
+            export(outputDir, texturesDir, resourceManager, server.getServerVersion(), server.overworld());
             
             LOGGER.info("Export completed in: {}", outputDir.toAbsolutePath());
         } catch (IOException e) {
@@ -72,7 +76,7 @@ public class Blockmaps implements ModInitializer {
 
     private ResourceManager getBestResourceManager(MinecraftServer server) {
         try {
-            Class<?> clientClass = Class.forName("net.minecraft.client.MinecraftClient");
+            Class<?> clientClass = Class.forName("net.minecraft.client.Minecraft");
             Object client = clientClass.getMethod("getInstance").invoke(null);
             ResourceManager rm = (ResourceManager) clientClass.getMethod("getResourceManager").invoke(client);
             LOGGER.info("Using Client ResourceManager for assets");
@@ -83,12 +87,12 @@ public class Blockmaps implements ModInitializer {
         }
     }
 
-    public static void export(Path outputJson, Path texturesDir, ResourceManager resourceManager, String gameVersion, WorldView world) throws IOException {
+    public static void export(Path outputJson, Path texturesDir, ResourceManager resourceManager, String gameVersion, LevelReader world) throws IOException {
         Map<MapColor, Set<Identifier>> blocksByColor = new HashMap<>();
         int blocksProcessed = 0;
         int texturesExtracted = 0;
 
-        for (Block block : Registries.BLOCK) {
+        for (Block block : BuiltInRegistries.BLOCK) {
             if (processBlock(block, blocksByColor, texturesDir, resourceManager)) {
                 blocksProcessed++;
                 texturesExtracted++;
@@ -98,17 +102,18 @@ public class Blockmaps implements ModInitializer {
         }
         
         LOGGER.info("Processed {} blocks, successfully extracted {} textures", blocksProcessed, texturesExtracted);
-        saveJson(outputJson, blocksByColor, gameVersion, world);
+        Map<String, String> introducedVersions = loadExistingIntroducedVersions(resourceManager);
+        saveJson(outputJson, blocksByColor, gameVersion, world, introducedVersions);
     }
 
     private static boolean shouldExport(Block block) {
-        var state = block.getDefaultState();
-        if (state.getMapColor(null, null) == MapColor.CLEAR) return false;
+        var state = block.defaultBlockState();
+        if (state.getMapColor(null, null) == MapColor.NONE) return false;
         
-        Identifier id = Registries.BLOCK.getId(block);
-        boolean isFullBlock = state.isFullCube(EmptyBlockView.INSTANCE, BlockPos.ORIGIN);
+        Identifier id = BuiltInRegistries.BLOCK.getKey(block);
+        boolean isFullBlock = state.isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
         boolean isSlab = block instanceof SlabBlock || id.getPath().contains("slab");
-        boolean isGlass = state.getOutlineShape(EmptyBlockView.INSTANCE, BlockPos.ORIGIN) == VoxelShapes.fullCube();
+        boolean isGlass = state.getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty()) == Shapes.block();
         boolean isCarpet = block instanceof CarpetBlock;
         boolean isCandle = block instanceof AbstractCandleBlock;
         boolean isPressurePlate = block instanceof PressurePlateBlock || block instanceof WeightedPressurePlateBlock;
@@ -119,15 +124,48 @@ public class Blockmaps implements ModInitializer {
     private static boolean processBlock(Block block, Map<MapColor, Set<Identifier>> blocksByColor, Path texturesDir, ResourceManager rm) {
         if (!shouldExport(block)) return false;
         
-        var state = block.getDefaultState();
+        var state = block.defaultBlockState();
         MapColor color = state.getMapColor(null, null);
-        Identifier id = Registries.BLOCK.getId(block);
+        Identifier id = BuiltInRegistries.BLOCK.getKey(block);
         
         blocksByColor.computeIfAbsent(color, k -> new HashSet<>()).add(id);
         return extractTexture(id, texturesDir, rm);
     }
 
-    private static void saveJson(Path outputDir, Map<MapColor, Set<Identifier>> blocksByColor, String gameVersion, WorldView world) throws IOException {
+    private static Map<String, String> loadExistingIntroducedVersions(ResourceManager rm) {
+        Map<String, String> versions = new HashMap<>();
+        try {
+            Identifier id = Identifier.fromNamespaceAndPath("blockmaps", "palette.json");
+            Optional<Resource> res = rm.getResource(id);
+            if (res.isPresent()) {
+                try (BufferedReader reader = res.get().openAsReader()) {
+                    JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
+                    if (json.has("colors")) {
+                        var colors = json.getAsJsonArray("colors");
+                        for (var colorEl : colors) {
+                            var color = colorEl.getAsJsonObject();
+                            if (color.has("blocks")) {
+                                var blocks = color.getAsJsonArray("blocks");
+                                for (var blockEl : blocks) {
+                                    var block = blockEl.getAsJsonObject();
+                                    if (block.has("id") && block.has("introducedIn")) {
+                                        versions.put(block.get("id").getAsString(), block.get("introducedIn").getAsString());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                LOGGER.warn("palette.json not found in mod resources.");
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to load existing introducedIn versions", e);
+        }
+        return versions;
+    }
+
+    private static void saveJson(Path outputDir, Map<MapColor, Set<Identifier>> blocksByColor, String gameVersion, LevelReader world, Map<String, String> introducedVersions) throws IOException {
         List<ColorEntry> colors = new ArrayList<>();
         for (Map.Entry<MapColor, Set<Identifier>> entry : blocksByColor.entrySet()) {
             ColorEntry colorEntry = new ColorEntry();
@@ -147,8 +185,9 @@ public class Blockmaps implements ModInitializer {
                     return a.compareTo(b); // Secondary alphabetical sort
                 })
                 .map(id -> {
-                    Block block = Registries.BLOCK.get(id);
-                    return new BlockEntry(id.toString(), needsSupport(block, world));
+                    Block block = BuiltInRegistries.BLOCK.get(id).map(Holder::value).orElse(null);
+                    String introducedIn = introducedVersions.getOrDefault(id.toString(), gameVersion);
+                    return new BlockEntry(id.toString(), needsSupport(block, world), introducedIn);
                 })
                 .toList();
             
@@ -163,9 +202,9 @@ public class Blockmaps implements ModInitializer {
         Files.writeString(outputDir.resolve(fileName), GSON.toJson(root));
     }
 
-    private static boolean needsSupport(Block block, WorldView world) {
+    private static boolean needsSupport(Block block, LevelReader world) {
         // Evaluate canPlaceAt at a high altitude overworld position (likely air)
-        return !block.getDefaultState().canPlaceAt(world, new BlockPos(0, 320, 0));
+        return !block.defaultBlockState().canSurvive(world, new BlockPos(0, 320, 0));
     }
 
     private static String getMaterial(String blockId) {
@@ -190,11 +229,11 @@ public class Blockmaps implements ModInitializer {
     private static boolean extractTexture(Identifier blockId, Path texturesDir, ResourceManager resourceManager) {
         try {
             Identifier textureId = null;
-            Block block = Registries.BLOCK.get(blockId);
+            Block block = BuiltInRegistries.BLOCK.get(blockId).map(Holder::value).orElse(null);
 
             // Special case for candles: use item texture directly
             if (block instanceof AbstractCandleBlock) {
-                Identifier itemModelId = Identifier.of(blockId.getNamespace(), "models/item/" + blockId.getPath() + ".json");
+                Identifier itemModelId = Identifier.fromNamespaceAndPath(blockId.getNamespace(), "models/item/" + blockId.getPath() + ".json");
                 Optional<Resource> itemRes = resourceManager.getResource(itemModelId);
                 if (itemRes.isPresent()) {
                     textureId = findTextureInModel(itemRes.get(), resourceManager);
@@ -211,7 +250,7 @@ public class Blockmaps implements ModInitializer {
 
                 // Fallback al modelo de item
                 if (textureId == null) {
-                    Identifier itemModelId = Identifier.of(blockId.getNamespace(), "models/item/" + blockId.getPath() + ".json");
+                    Identifier itemModelId = Identifier.fromNamespaceAndPath(blockId.getNamespace(), "models/item/" + blockId.getPath() + ".json");
                     Optional<Resource> itemRes = resourceManager.getResource(itemModelId);
                     if (itemRes.isPresent()) {
                         textureId = findTextureInModel(itemRes.get(), resourceManager);
@@ -231,11 +270,11 @@ public class Blockmaps implements ModInitializer {
     }
 
     private static Identifier resolveModelId(Identifier blockId, ResourceManager rm) throws IOException {
-        Identifier blockstateId = Identifier.of(blockId.getNamespace(), "blockstates/" + blockId.getPath() + ".json");
+        Identifier blockstateId = Identifier.fromNamespaceAndPath(blockId.getNamespace(), "blockstates/" + blockId.getPath() + ".json");
         Optional<Resource> blockstateRes = rm.getResource(blockstateId);
         
         if (blockstateRes.isPresent()) {
-            try (BufferedReader reader = blockstateRes.get().getReader()) {
+            try (BufferedReader reader = blockstateRes.get().openAsReader()) {
                 JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
                 String modelPath = null;
                 
@@ -254,15 +293,15 @@ public class Blockmaps implements ModInitializer {
                 }
                 
                 if (modelPath != null) {
-                    Identifier id = Identifier.of(modelPath);
+                    Identifier id = Identifier.parse(modelPath);
                     String path = id.getPath();
                     if (!path.startsWith("models/")) path = "models/" + path;
                     if (!path.endsWith(".json")) path = path + ".json";
-                    return Identifier.of(id.getNamespace(), path);
+                    return Identifier.fromNamespaceAndPath(id.getNamespace(), path);
                 }
             }
         }
-        return Identifier.of(blockId.getNamespace(), "models/block/" + blockId.getPath() + ".json");
+        return Identifier.fromNamespaceAndPath(blockId.getNamespace(), "models/block/" + blockId.getPath() + ".json");
     }
 
     private static String getModelPathFromJson(com.google.gson.JsonElement element) {
@@ -276,11 +315,11 @@ public class Blockmaps implements ModInitializer {
     }
 
     private static boolean copyTexture(Identifier blockId, Identifier textureId, Path texturesDir, ResourceManager rm) throws IOException {
-        Identifier pngId = Identifier.of(textureId.getNamespace(), "textures/" + textureId.getPath() + ".png");
+        Identifier pngId = Identifier.fromNamespaceAndPath(textureId.getNamespace(), "textures/" + textureId.getPath() + ".png");
         Optional<Resource> pngRes = rm.getResource(pngId);
 
         if (pngRes.isPresent()) {
-            try (InputStream is = pngRes.get().getInputStream()) {
+            try (InputStream is = pngRes.get().open()) {
                 Path dest = texturesDir.resolve(blockId.getPath() + ".png");
                 Files.copy(is, dest, StandardCopyOption.REPLACE_EXISTING);
                 return true;
@@ -296,7 +335,7 @@ public class Blockmaps implements ModInitializer {
     }
 
     private static Identifier findTextureInModel(Resource resource, ResourceManager rm, Map<String, String> textures) throws IOException {
-        try (BufferedReader reader = resource.getReader()) {
+        try (BufferedReader reader = resource.openAsReader()) {
             JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
 
             if (json.has("textures")) {
@@ -315,29 +354,29 @@ public class Blockmaps implements ModInitializer {
                         String val = texJson.get(key).getAsString();
                         if (val.startsWith("#")) {
                             String ref = val.substring(1);
-                            if (textures.containsKey(ref)) return Identifier.of(textures.get(ref));
+                            if (textures.containsKey(ref)) return Identifier.parse(textures.get(ref));
                         } else {
-                            return Identifier.of(val);
+                            return Identifier.parse(val);
                         }
                     }
                     if (textures.containsKey(key)) {
-                        return Identifier.of(textures.get(key));
+                        return Identifier.parse(textures.get(key));
                     }
                 }
             }
 
             if (json.has("parent")) {
-                Identifier parentId = Identifier.of(json.get("parent").getAsString());
+                Identifier parentId = Identifier.parse(json.get("parent").getAsString());
                 String path = parentId.getPath();
                 if (!path.startsWith("models/")) path = "models/" + path;
                 if (!path.endsWith(".json")) path = path + ".json";
 
-                Optional<Resource> parentRes = rm.getResource(Identifier.of(parentId.getNamespace(), path));
+                Optional<Resource> parentRes = rm.getResource(Identifier.fromNamespaceAndPath(parentId.getNamespace(), path));
                 if (parentRes.isPresent()) return findTextureInModel(parentRes.get(), rm, textures);
             }
 
             for (String val : textures.values()) {
-                if (!val.startsWith("#")) return Identifier.of(val);
+                if (!val.startsWith("#")) return Identifier.parse(val);
             }
 
             return null;
