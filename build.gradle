@@ -19,6 +19,19 @@ loom {
             sourceSet sourceSets.client
         }
     }
+
+    runs {
+        autoExportClient {
+            inherit client
+            name "Auto Export Client"
+            vmArg "-Dblockmaps.auto_exit=true"
+            
+            def worldName = project.findProperty("world") ?: "New World"
+            vmArg "-Dblockmaps.world_name=${worldName}"
+            programArg "--quickPlaySingleplayer"
+            programArg worldName
+        }
+    }
 }
 
 // Configuración necesaria para DataGen en la 26.1

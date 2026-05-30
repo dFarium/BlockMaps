@@ -54,6 +54,30 @@ public class PaletteExporter {
             export(outputDir, texturesDir, resourceManager, server.getServerVersion(), server.overworld());
             
             LOGGER.info("Export completed in: {}", outputDir.toAbsolutePath());
+
+            // Auto-exit if configured
+            if ("true".equals(System.getProperty("blockmaps.auto_exit"))) {
+                LOGGER.info("Auto-exit property detected. Shutting down Minecraft...");
+                try {
+                    Class<?> clientClass = Class.forName("net.minecraft.client.Minecraft");
+                    Object client = clientClass.getMethod("getInstance").invoke(null);
+                    java.util.concurrent.Executor executor = (java.util.concurrent.Executor) client;
+                    executor.execute(() -> {
+                        try {
+                            clientClass.getMethod("stop").invoke(client);
+                        } catch (Exception ex) {
+                            LOGGER.error("Failed to execute stop task on main thread", ex);
+                        }
+                    });
+                } catch (Exception e) {
+                    LOGGER.info("Client Minecraft class not found. Trying server shutdown...");
+                    try {
+                        server.halt(false);
+                    } catch (Exception ex) {
+                        LOGGER.error("Failed to stop server programmatically", ex);
+                    }
+                }
+            }
         } catch (IOException e) {
             LOGGER.error("Error exporting data", e);
         }
