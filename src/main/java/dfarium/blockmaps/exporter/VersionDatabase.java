@@ -41,10 +41,13 @@ public class VersionDatabase {
                     }
                 }
             } else {
-                LOGGER.warn("palette.json not found in mod resources.");
+                throw new IllegalStateException("Historical palette.json not found in mod resources");
             }
         } catch (Exception e) {
-            LOGGER.error("Failed to load existing introducedIn versions", e);
+            throw new IllegalStateException("Cannot export without the historical block versions", e);
+        }
+        if (versions.isEmpty()) {
+            throw new IllegalStateException("Historical palette contains no block versions");
         }
         return versions;
     }

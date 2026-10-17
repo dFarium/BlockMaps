@@ -1,5 +1,5 @@
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.15-SNAPSHOT'
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
     id 'maven-publish'
 }
 
@@ -26,7 +26,7 @@ loom {
             name "Auto Export Client"
             vmArg "-Dblockmaps.auto_exit=true"
             
-            def worldName = project.findProperty("world") ?: "New World"
+            def worldName = project.findProperty("world") ?: "BlockMaps-${project.minecraft_version}"
             vmArg "-Dblockmaps.world_name=${worldName}"
             programArg "--quickPlaySingleplayer"
             programArg worldName
@@ -34,7 +34,7 @@ loom {
     }
 }
 
-// Configuración necesaria para DataGen en la 26.1
+// Client assets are required for texture extraction.
 fabricApi {
     configureDataGeneration {
         client = true
@@ -44,7 +44,7 @@ fabricApi {
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
-    // NOTA: Usamos 'implementation' porque en la 26.1 no hay remapping de jars (unobfuscated)
+    // Minecraft 26.x ships unobfuscated; dependencies do not need remapping.
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
@@ -61,7 +61,7 @@ processResources {
     }
 }
 
-// Actualizado a Java 25 para Minecraft 26.1
+// Minecraft 26.x requires Java 25.
 def targetJavaVersion = 25
 tasks.withType(JavaCompile).configureEach {
     it.options.encoding = "UTF-8"

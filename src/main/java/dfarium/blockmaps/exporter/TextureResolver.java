@@ -19,9 +19,11 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class TextureResolver {
     private static final Logger LOGGER = LoggerFactory.getLogger(TextureResolver.class);
@@ -144,55 +146,62 @@ public class TextureResolver {
     }
 
     private static Identifier findTextureInModel(Resource resource, ResourceManager rm) throws IOException {
-        return findTextureInModel(resource, rm, new HashMap<>());
+        Map<String, String> textures = new LinkedHashMap<>();
+        collectTextures(resource, rm, textures, new HashSet<>(), 0);
+        // Keep the established icon preference, resolving aliases after inheritance.
+        String[] priorityKeys = {"side", "top", "all", "texture", "candle", "carpet", "layer0"};
+        for (String key : priorityKeys) {
+            Identifier texture = resolveTexture(key, textures);
+            if (texture != null) return texture;
+        }
+        for (String key : textures.keySet()) {
+            Identifier texture = resolveTexture(key, textures);
+            if (texture != null) return texture;
+        }
+        return null;
     }
 
-    private static Identifier findTextureInModel(Resource resource, ResourceManager rm, Map<String, String> textures) throws IOException {
+    private static void collectTextures(Resource resource, ResourceManager rm, Map<String, String> textures,
+                                        Set<Identifier> parents, int depth) throws IOException {
+        if (depth >= 64) throw new IOException("Model parent chain exceeds 64 levels");
         try (BufferedReader reader = resource.openAsReader()) {
             JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
-
             if (json.has("textures")) {
                 JsonObject texJson = json.getAsJsonObject("textures");
                 for (String key : texJson.keySet()) {
-                    String val = texJson.get(key).getAsString();
-                    if (!val.startsWith("#")) {
-                        textures.putIfAbsent(key, val);
+                    // Child definitions, including aliases, take precedence over parents.
+                    var texture = texJson.get(key);
+                    // 26.3 also allows sprite objects, e.g. stained glass with force_translucent.
+                    if (texture.isJsonObject()) {
+                        texture = texture.getAsJsonObject().get("sprite");
                     }
-                }
-
-                // Rule: side > top > normal (all/texture)
-                String[] priorityKeys = {"side", "top", "all", "texture", "candle", "carpet", "layer0"};
-                for (String key : priorityKeys) {
-                    if (texJson.has(key)) {
-                        String val = texJson.get(key).getAsString();
-                        if (val.startsWith("#")) {
-                            String ref = val.substring(1);
-                            if (textures.containsKey(ref)) return Identifier.parse(textures.get(ref));
-                        } else {
-                            return Identifier.parse(val);
-                        }
+                    if (texture == null || !texture.isJsonPrimitive()
+                            || !texture.getAsJsonPrimitive().isString()) {
+                        throw new IOException("Invalid texture definition for model key: " + key);
                     }
-                    if (textures.containsKey(key)) {
-                        return Identifier.parse(textures.get(key));
-                    }
+                    textures.putIfAbsent(key, texture.getAsString());
                 }
             }
-
             if (json.has("parent")) {
                 Identifier parentId = Identifier.parse(json.get("parent").getAsString());
+                if (!parents.add(parentId)) throw new IOException("Cyclic model parent: " + parentId);
                 String path = parentId.getPath();
                 if (!path.startsWith("models/")) path = "models/" + path;
                 if (!path.endsWith(".json")) path = path + ".json";
-
                 Optional<Resource> parentRes = rm.getResource(Identifier.fromNamespaceAndPath(parentId.getNamespace(), path));
-                if (parentRes.isPresent()) return findTextureInModel(parentRes.get(), rm, textures);
+                if (parentRes.isPresent()) collectTextures(parentRes.get(), rm, textures, parents, depth + 1);
             }
-
-            for (String val : textures.values()) {
-                if (!val.startsWith("#")) return Identifier.parse(val);
-            }
-
-            return null;
         }
+    }
+
+    private static Identifier resolveTexture(String key, Map<String, String> textures) {
+        Set<String> visited = new HashSet<>();
+        while (visited.add(key)) {
+            String value = textures.get(key);
+            if (value == null) return null;
+            if (!value.startsWith("#")) return Identifier.parse(value);
+            key = value.substring(1);
+        }
+        return null;
     }
 }

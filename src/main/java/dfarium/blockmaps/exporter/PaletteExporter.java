@@ -23,6 +23,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class PaletteExporter {
@@ -46,7 +48,9 @@ public class PaletteExporter {
 
     public static void run(MinecraftServer server) {
         try {
-            Path outputDir = Path.of("blockmaps_export");
+            // A fresh directory prevents stale PNGs from hiding extraction failures.
+            String runId = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));
+            Path outputDir = Path.of("blockmaps_export", server.getServerVersion().replaceAll("[^A-Za-z0-9_-]", "_"), runId);
             Path texturesDir = outputDir.resolve("textures");
             Files.createDirectories(texturesDir);
 
@@ -79,27 +83,59 @@ public class PaletteExporter {
                 }
             }
         } catch (IOException e) {
-            LOGGER.error("Error exporting data", e);
+            throw new IllegalStateException("BlockMaps export failed", e);
         }
     }
 
-    public static void export(Path outputJson, Path texturesDir, ResourceManager resourceManager, String gameVersion, LevelReader world) throws IOException {
+    public static void export(Path outputDir, Path texturesDir, ResourceManager resourceManager, String gameVersion, LevelReader world) throws IOException {
+        Map<String, String> introducedVersions = VersionDatabase.load(resourceManager);
+        Files.createDirectories(outputDir);
+        Files.createDirectories(texturesDir);
         Map<MapColor, Set<Identifier>> blocksByColor = new HashMap<>();
-        int blocksProcessed = 0;
-        int texturesExtracted = 0;
+        Map<String, Integer> blockMapColors = new TreeMap<>();
+        Map<String, String> excludedBlocks = new TreeMap<>();
+        List<String> missingTextures = new ArrayList<>();
+        Set<String> registryIds = new TreeSet<>();
 
         for (Block block : BuiltInRegistries.BLOCK) {
-            if (processBlock(block, blocksByColor, texturesDir, resourceManager)) {
-                blocksProcessed++;
-                texturesExtracted++;
-            } else if (shouldExport(block)) {
-                blocksProcessed++;
+            String id = BuiltInRegistries.BLOCK.getKey(block).toString();
+            registryIds.add(id);
+            if (!shouldExport(block)) {
+                excludedBlocks.put(id, block.defaultBlockState().getMapColor(null, null) == MapColor.NONE
+                        ? "no_map_color" : "shape_excluded_by_map_art_filter");
+                continue;
+            }
+            blockMapColors.put(id, block.defaultBlockState().getMapColor(null, null).id);
+            if (!processBlock(block, blocksByColor, texturesDir, resourceManager)) {
+                missingTextures.add(id);
             }
         }
-        
-        LOGGER.info("Processed {} blocks, successfully extracted {} textures", blocksProcessed, texturesExtracted);
-        Map<String, String> introducedVersions = VersionDatabase.load(resourceManager);
-        saveJson(outputJson, blocksByColor, gameVersion, world, introducedVersions);
+        Collections.sort(missingTextures);
+        List<String> addedToPalette = blockMapColors.keySet().stream()
+                .filter(id -> !introducedVersions.containsKey(id)).toList();
+        List<String> removedFromPalette = introducedVersions.keySet().stream()
+                .filter(id -> !blockMapColors.containsKey(id)).sorted().toList();
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("version", gameVersion);
+        report.put("dataVersion", net.minecraft.SharedConstants.getCurrentVersion().dataVersion().version());
+        report.put("historicalBlocks", introducedVersions.size());
+        report.put("registryBlocks", registryIds.size());
+        report.put("exportedBlocks", blockMapColors.size());
+        report.put("colorGroups", blocksByColor.size());
+        report.put("texturesExtracted", blockMapColors.size() - missingTextures.size());
+        report.put("missingTextures", missingTextures);
+        report.put("addedToPalette", addedToPalette);
+        report.put("removedFromPalette", removedFromPalette);
+        report.put("missingFromRegistry", removedFromPalette.stream().filter(id -> !registryIds.contains(id)).toList());
+        report.put("excludedBlocks", excludedBlocks);
+        report.put("statePolicy", "default_block_state_only");
+        report.put("introductionPolicy", "Historical versions preserved; IDs absent from baseline provisionally use current version. Review addedToPalette before promotion.");
+        report.put("status", missingTextures.isEmpty() && removedFromPalette.isEmpty() ? "ready_for_review" : "issues_found");
+        Files.writeString(outputDir.resolve("export_report.json"), GSON.toJson(report));
+        Files.writeString(outputDir.resolve("block_map_colors.json"), GSON.toJson(blockMapColors));
+        saveJson(outputDir, blocksByColor, gameVersion, world, introducedVersions);
+        LOGGER.info("Exported {} blocks in {} colors; {} textures missing; {} additions; {} removals. Review export_report.json before updating the historical palette.",
+                blockMapColors.size(), blocksByColor.size(), missingTextures.size(), addedToPalette.size(), removedFromPalette.size());
     }
 
     private static boolean shouldExport(Block block) {
@@ -174,7 +210,7 @@ public class PaletteExporter {
         String path = blockId.split(":")[1];
         // Common materials/prefixes
         String[] materials = {
-            "oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "bamboo", 
+            "oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak", "poplar", "bamboo",
             "crimson", "warped", "iron", "gold", "copper", "stone", "cobblestone", "andesite", "diorite", 
             "granite", "sandstone", "quartz", "prismarine", "nether_brick", "blackstone", "deepslate", "mud", 
             "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", 
